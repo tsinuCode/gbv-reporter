@@ -1,5 +1,6 @@
 import logging
 import os
+import asyncio
 from datetime import datetime, timezone
 import aiohttp
 from dotenv import load_dotenv
@@ -248,22 +249,22 @@ Contact: {lang_data.get("contact") or 'N/A'}
         logger.error(f"Failed to send email: {e}")
 
 
-if __name__ == '__main__':
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            LANGUAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_language)],
-            CATEGORY: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_category)],
-            DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_description)],
-            LOCATION: [MessageHandler(filters.LOCATION | (filters.TEXT & ~filters.COMMAND), receive_location)],
-            AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_age)],
-            CONTACT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_contact)],
-        },
-        fallbacks=[CommandHandler("start", start)]
-    )
 
-    app.add_handler(conv_handler)
-    logger.info("Bot started...")
-    app.run_polling()
+if __name__ == "__main__":
+    async def main():
+        # Get webhook URL from environment variable
+        webhook_url = os.getenv("RENDER_EXTERNAL_URL") + "/webhook"
+
+        # Set webhook with Telegram
+        await app.bot.set_webhook(url=webhook_url)
+
+        # Run the app using webhook settings
+        await app.run_webhook(
+            listen="0.0.0.0",
+            port=int(os.getenv("PORT", 8000)),
+            webhook_path="/webhook"
+        )
+
+    asyncio.run(main())
+
