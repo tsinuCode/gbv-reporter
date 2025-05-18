@@ -15,10 +15,11 @@ services:
         fromSecret: airtable_base_id
       - key: AIRTABLE_TABLE_NAME
         fromSecret: table_name
-      - key: EMAIL_SENDER
-        fromSecret: email@example.com
-      - key: EMAIL_PASSWORD
-        fromSecret: email_password
+      - key: SMTP_USER
+        fromSecret: SMTP_USER
+      - key: SMTP_PASS
+        fromSecret: SMTP_PASS
+         
 
 
 
