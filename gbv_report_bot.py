@@ -283,22 +283,22 @@ def main():
     app.add_handler(conv_handler)
 
     
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/")
 
-app = Application.builder().token(BOT_TOKEN).build()
+app = Application.builder().token(TOKEN).build()
 
 # Register your handlers here
 # app.add_handler(...)
 
 async def run():
     await app.initialize()
-    await app.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    await app.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
     await app.start()
     await app.updater.start_webhook(
         listen="0.0.0.0",
         port=int(os.getenv("PORT", 8443)),
-        url_path=BOT_TOKEN
+        url_path=TOKEN
     )
     await app.updater.idle()
 
