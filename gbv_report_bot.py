@@ -273,11 +273,17 @@ def main():
     port = int(os.getenv("PORT", 8000))
 
     async def run():
-        await app.bot.set_webhook(url=webhook_url)
-        await app.run_webhook(
-            listen="0.0.0.0",
-            port=port,
-            path="/"  # PTB 20.x+ requires 'path', not 'webhook_path'
-        )
+    await app.initialize()
+    PORT = int(os.environ.get("PORT", "8443"))
+    await app.start()
+    await app.updater.start_polling()  # optional if polling
+    await app.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    await app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=BOT_TOKEN,
+        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
+    )
+
 
     asyncio.run(run())
