@@ -1,7 +1,6 @@
 import logging
 import os
 from datetime import datetime, timezone
-from turtle import update
 import aiohttp
 from dotenv import load_dotenv
 import smtplib
@@ -14,12 +13,12 @@ from telegram.ext import (ApplicationBuilder, CommandHandler, MessageHandler,
 
 load_dotenv()
 
-# Enable logging
+# Logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Environment variables
+# Environment Variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 AIRTABLE_API_KEY = os.getenv("AIRTABLE_API_KEY")
 AIRTABLE_BASE_ID = os.getenv("AIRTABLE_BASE_ID")
@@ -32,10 +31,10 @@ SMTP_PASS = os.getenv("SMTP_PASS")
 EMAIL_UNDER_18 = os.getenv("EMAIL_UNDER_18")
 EMAIL_18_AND_OVER = os.getenv("EMAIL_18_AND_OVER")
 
-# States for conversation
+# Conversation States
 LANGUAGE, CATEGORY, DESCRIPTION, LOCATION, AGE, CONTACT = range(6)
 
-# Language labels
+# Language Options
 LANGUAGES = {
     "English": "en",
     "አማርኛ": "am",
@@ -90,38 +89,23 @@ STRINGS = {
     }
 }
 
-# User session storage
+# In-memory session data
 user_data = {}
-
-
-
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    first_time = not context.user_data.get("started", False)
-    
-    context.user_data.clear()  # clear any previous session data
-    context.user_data["started"] = True  # mark as started
+    context.user_data.clear()
+    context.user_data["started"] = True
 
-    messages = []
-    
-    if first_time:
-        messages.append(f"👋 Hello {user.first_name or 'there'}! Welcome to the GBV Reporting Bot.\n\n እንኳን ወደ የሴቶች ጥቃትን ሪፖርት ማድረጊያ ቦት በደህና መጡ ! \n\n")
-    
-    messages.append("👉 Click /start to begin or select your language below.")
-    messages.append(STRINGS["en"]["start"])  # language selection prompt
-    
+    messages = [f"👋 Hello {user.first_name or 'there'}! Welcome to the GBV Reporting Bot.",
+                "👉 Click /start to begin or select your language below.",
+                STRINGS["en"]["start"]]
+
     reply_keyboard = [[KeyboardButton(lang)] for lang in LANGUAGES.keys()]
-
-    await update.message.reply_text(
-        "\n\n".join(messages),
-        reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
-    )
+    await update.message.reply_text("\n\n".join(messages),
+                                    reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
     return LANGUAGE
-
-
-
 
 
 async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -137,12 +121,14 @@ async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Invalid language selected.")
         return LANGUAGE
 
+
 async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     user_data[uid]["category"] = update.message.text
     code = user_data[uid]["lang"]
     await update.message.reply_text(STRINGS[code]["description"], reply_markup=ReplyKeyboardRemove())
     return DESCRIPTION
+
 
 async def receive_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -153,6 +139,7 @@ async def receive_description(update: Update, context: ContextTypes.DEFAULT_TYPE
                                         [[KeyboardButton("Send Location", request_location=True)], ["Skip"]],
                                         one_time_keyboard=True))
     return LOCATION
+
 
 async def receive_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -165,17 +152,18 @@ async def receive_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(STRINGS[code]["age"], reply_markup=ReplyKeyboardRemove())
     return AGE
 
-async def receive_age(update : Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def receive_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     age_text = update.message.text.strip()
-    code = user_data[uid]["lang"]
     if not age_text.isdigit():
         await update.message.reply_text("Please enter a valid numeric age.")
         return AGE
-    age = int(age_text)
-    user_data[uid]["age"] = age
+    user_data[uid]["age"] = int(age_text)
+    code = user_data[uid]["lang"]
     await update.message.reply_text(STRINGS[code]["contact"])
     return CONTACT
+
 
 async def receive_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -186,17 +174,12 @@ async def receive_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await submit_to_airtable(update, uid)
     return ConversationHandler.END
 
-async def submit_to_airtable(update: Update, uid):
+
+async def submit_to_airtable(update: Update, uid: int):
     code = user_data[uid]["lang"]
     lang_data = user_data[uid]
     timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     username = update.effective_user.username or ""
-
-    # Log a warning if timestamp missing but still continue (optional)
-    if not timestamp:
-        logger.warning("Missing timestamp.")
-        await update.message.reply_text("Incomplete data. Report was not submitted.")
-        return
 
     data = {
         "fields": {
@@ -212,8 +195,6 @@ async def submit_to_airtable(update: Update, uid):
         }
     }
 
-    logger.info(f"Submitting data to Airtable: {data}")
-
     url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
     headers = {
         "Authorization": f"Bearer {AIRTABLE_API_KEY}",
@@ -224,51 +205,37 @@ async def submit_to_airtable(update: Update, uid):
         async with session.post(url, json=data, headers=headers) as resp:
             if resp.status in (200, 201):
                 await update.message.reply_text(STRINGS[code]["thank_you"])
-                await update.message.reply_text(
-                    STRINGS[code]["report_summary"].format(
-                        location=lang_data.get("location", ""),
-                        category=lang_data.get("category", ""),
-                        description=lang_data.get("description", "")
-                    )
-                )
-                # Send notification email based on age
+                await update.message.reply_text(STRINGS[code]["report_summary"].format(
+                    location=lang_data.get("location", ""),
+                    category=lang_data.get("category", ""),
+                    description=lang_data.get("description", "")
+                ))
                 await send_age_based_email(lang_data)
-                await send_age_based_email(lang_data)
-                await update.message.reply_text("Notification email sent.")  # This goes here
-
             else:
                 error_text = await resp.text()
                 logger.error(f"Airtable API error: {resp.status} - {error_text}")
                 await update.message.reply_text("Something went wrong while submitting the report.")
 
+
 async def send_age_based_email(lang_data):
     age = lang_data.get("age", 0)
-    category = lang_data.get("category", "N/A")
-    description = lang_data.get("description", "N/A")
-    location = lang_data.get("location", "N/A")
-    contact = lang_data.get("contact", "N/A")
     recipient = EMAIL_UNDER_18 if age < 18 else EMAIL_18_AND_OVER
 
-    subject = f"GBV Report ({'Under 18' if age < 18 else '18+'}) - {category} @ {location[:30]}"
-
+    subject = f"GBV Report ({'Under 18' if age < 18 else '18+'}) - {lang_data.get('category')} @ {lang_data.get('location')[:30]}"
     body = f"""
 A new report has been submitted.
 
-logger.info(f"Email sent to {recipient} for age {age}")
-
-
 Age: {age}
-Category: {category}
-Description: {description}
-Location: {location}
-Contact: {contact if contact else 'N/A'}
+Category: {lang_data.get("category")}
+Description: {lang_data.get("description")}
+Location: {lang_data.get("location")}
+Contact: {lang_data.get("contact") or 'N/A'}
 """
 
     message = MIMEMultipart()
     message["From"] = SMTP_USER
     message["To"] = recipient
     message["Subject"] = subject
-
     message.attach(MIMEText(body, "plain"))
 
     try:
@@ -280,8 +247,6 @@ Contact: {contact if contact else 'N/A'}
     except Exception as e:
         logger.error(f"Failed to send email: {e}")
 
-    
-        
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
@@ -300,6 +265,5 @@ if __name__ == '__main__':
     )
 
     app.add_handler(conv_handler)
-
     logger.info("Bot started...")
     app.run_polling()
