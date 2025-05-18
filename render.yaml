@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: gbv-reporter-bot
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python gbv_report_bot.py
+    envVars:
+      - key: BOT_TOKEN
+        value: 7705684576:AAGDKnZk-z-9kDlvCFuUUzQLc5kYpU3-Bbk
+      - key: AIRTABLE_API_KEY
+        value: patOu7qS2xp5COGSu.d95c9d5b021f6aee18b9a8e6718126ef097f710c4e7d5fd1b789ab45b959e207
+      - key: AIRTABLE_BASE_ID
+        value: app6jAGUpxDBzi4BD
+      - key: AIRTABLE_TABLE_NAME
+        value: Reports
