@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 
 # Environment variables
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+if not TOKEN:
+    raise ValueError("No Telegram Bot Token found in environment variable 'TELEGRAM_BOT_TOKEN'")
+
 AIRTABLE_API_KEY = os.getenv("AIRTABLE_API_KEY")
 AIRTABLE_BASE_ID = os.getenv("AIRTABLE_BASE_ID")
 AIRTABLE_TABLE_NAME = os.getenv("AIRTABLE_TABLE_NAME")
