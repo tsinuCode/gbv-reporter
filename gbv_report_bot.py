@@ -251,20 +251,56 @@ Contact: {lang_data.get("contact") or 'N/A'}
 
 
 
-if __name__ == "__main__":
-    async def main():
-        # Get webhook URL from environment variable
-        webhook_url = os.getenv("RENDER_EXTERNAL_URL") + "/webhook"
+from telegram.ext import ConversationHandler
 
-        # Set webhook with Telegram
+def build_application():
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+        states={
+            LANGUAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_language)],
+            CATEGORY: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_category)],
+            DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_description)],
+            LOCATION: [MessageHandler((filters.LOCATION | filters.TEXT) & ~filters.COMMAND, receive_location)],
+            AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_age)],
+            CONTACT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_contact)]
+        },
+        fallbacks=[],
+    )
+
+    app.add_handler(conv_handler)
+
+    return app
+
+
+
+
+
+
+if __name__ == "__main__":
+    import asyncio
+    import os
+
+    async def main():
+        app = build_application()
+
+        webhook_url = os.getenv("RENDER_EXTERNAL_URL") + "/webhook"
+        port = int(os.getenv("PORT", 8000))
+
+        # Set the webhook with Telegram API
         await app.bot.set_webhook(url=webhook_url)
 
-        # Run the app using webhook settings
-        await app.run_webhook(
+        # Start the webhook server
+        await app.start()
+        await app.updater.start_webhook(
             listen="0.0.0.0",
-            port=int(os.getenv("PORT", 8000)),
+            port=port,
             webhook_path="/webhook"
         )
+        print(f"Bot started. Webhook URL: {webhook_url}")
+        await app.updater.idle()
 
     asyncio.run(main())
+
 
