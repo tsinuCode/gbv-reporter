@@ -269,8 +269,7 @@ def main():
 
     app.add_handler(conv_handler)
 
-    # Webhook setup (for Render or similar hosting)
-    webhook_url = os.getenv("RENDER_EXTERNAL_URL") + "/webhook"
+    webhook_url = os.getenv("RENDER_EXTERNAL_URL", "") + "/"
     port = int(os.getenv("PORT", 8000))
 
     async def run():
@@ -278,10 +277,7 @@ def main():
         await app.run_webhook(
             listen="0.0.0.0",
             port=port,
-            webhook_path="/webhook"
+            path="/"  # PTB 20.x+ requires 'path', not 'webhook_path'
         )
 
     asyncio.run(run())
-
-if __name__ == "__main__":
-    main()
