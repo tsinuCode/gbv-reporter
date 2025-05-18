@@ -269,21 +269,25 @@ def main():
 
     app.add_handler(conv_handler)
 
-    webhook_url = os.getenv("RENDER_EXTERNAL_URL", "") + "/"
-    port = int(os.getenv("PORT", 8000))
+    
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/")
 
-    async def run():
+app = Application.builder().token(BOT_TOKEN).build()
+
+# Register your handlers here
+# app.add_handler(...)
+
+async def run():
     await app.initialize()
-    PORT = int(os.environ.get("PORT", "8443"))
-    await app.start()
-    await app.updater.start_polling()  # optional if polling
     await app.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
-    await app.run_webhook(
+    await app.start()
+    await app.updater.start_webhook(
         listen="0.0.0.0",
-        port=PORT,
-        url_path=BOT_TOKEN,
-        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
+        port=int(os.getenv("PORT", 8443)),
+        url_path=BOT_TOKEN
     )
+    await app.updater.idle()
 
-
+if __name__ == "__main__":
     asyncio.run(run())
