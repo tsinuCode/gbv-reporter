@@ -1,5 +1,5 @@
 services:
-  - type: worker
+  - type: web
     name: gbv-reporter-bot
     env: python
     region: oregon
