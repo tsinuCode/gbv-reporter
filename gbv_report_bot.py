@@ -6,40 +6,32 @@ import aiohttp
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    filters,
-    ContextTypes,
-    ConversationHandler,
-)
-
 
 from dotenv import load_dotenv
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler,
+    Application, ApplicationBuilder, CommandHandler, MessageHandler,
     ContextTypes, filters, ConversationHandler
 )
 
 load_dotenv()
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+# Logging
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Environment variables
+# Environment Variables
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 if not TOKEN:
     raise ValueError("No Telegram Bot Token found in environment variable 'TELEGRAM_BOT_TOKEN'")
 
+WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/")
+
 AIRTABLE_API_KEY = os.getenv("AIRTABLE_API_KEY")
 AIRTABLE_BASE_ID = os.getenv("AIRTABLE_BASE_ID")
 AIRTABLE_TABLE_NAME = os.getenv("AIRTABLE_TABLE_NAME")
+
 SMTP_SERVER = os.getenv("SMTP_SERVER")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 SMTP_USER = os.getenv("SMTP_USER")
@@ -47,7 +39,7 @@ SMTP_PASS = os.getenv("SMTP_PASS")
 EMAIL_UNDER_18 = os.getenv("EMAIL_UNDER_18")
 EMAIL_18_AND_OVER = os.getenv("EMAIL_18_AND_OVER")
 
-# Conversation states
+# Conversation States
 LANGUAGE, CATEGORY, DESCRIPTION, LOCATION, AGE, CONTACT = range(6)
 
 LANGUAGES = {
@@ -57,8 +49,9 @@ LANGUAGES = {
     "Tigrinya": "ti"
 }
 
+# Multilingual Strings
 STRINGS = {
-    "en": {
+	"en": {
         "start": "Please select your language / እባክዎ ቋንቋዎን ይምረጡ:",
         "category": "Please choose the category:",
         "categories": ["Physical", "Sexual", "Emotional", "Other"],
@@ -111,14 +104,16 @@ STRINGS = {
     }
 }
 
+	
+
+
+# Handlers
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    user = update.effective_user
     keyboard = [[lang] for lang in LANGUAGES.keys()]
     await update.message.reply_text(
-        f"👋 Hello {user.first_name or 'there'}! Welcome to the GBV Reporting Bot.\n\n"
-        f"👉 Click /start or select your language below.\n\n"
-        f"{STRINGS['en']['start']}",
+        STRINGS["en"]["start"],
         reply_markup=ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
     )
     return LANGUAGE
@@ -127,35 +122,28 @@ async def choose_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = update.message.text
     code = LANGUAGES.get(lang)
     if not code:
-        await update.message.reply_text("Invalid language. Please select again.")
+        await update.message.reply_text("Invalid language. Please try again.")
         return LANGUAGE
     context.user_data["lang"] = code
     cats = STRINGS[code]["categories"]
-    await update.message.reply_text(
-        STRINGS[code]["category"],
-        reply_markup=ReplyKeyboardMarkup([[c] for c in cats], one_time_keyboard=True)
-    )
+    await update.message.reply_text(STRINGS[code]["category"],
+        reply_markup=ReplyKeyboardMarkup([[c] for c in cats], one_time_keyboard=True))
     return CATEGORY
 
 async def choose_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["category"] = update.message.text
     code = context.user_data["lang"]
-    await update.message.reply_text(
-        STRINGS[code]["description"],
-        reply_markup=ReplyKeyboardRemove()
-    )
+    await update.message.reply_text(STRINGS[code]["description"], reply_markup=ReplyKeyboardRemove())
     return DESCRIPTION
 
 async def receive_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["description"] = update.message.text
     code = context.user_data["lang"]
-    await update.message.reply_text(
-        STRINGS[code]["location"],
+    await update.message.reply_text(STRINGS[code]["location"],
         reply_markup=ReplyKeyboardMarkup(
             [[KeyboardButton("Send Location", request_location=True)], ["Skip"]],
             one_time_keyboard=True
-        )
-    )
+        ))
     return LOCATION
 
 async def receive_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -166,10 +154,7 @@ async def receive_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
         loc = "" if text.lower() == "skip" else text
     context.user_data["location"] = loc
     code = context.user_data["lang"]
-    await update.message.reply_text(
-        STRINGS[code]["age"],
-        reply_markup=ReplyKeyboardRemove()
-    )
+    await update.message.reply_text(STRINGS[code]["age"], reply_markup=ReplyKeyboardRemove())
     return AGE
 
 async def receive_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -184,68 +169,65 @@ async def receive_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def receive_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact = update.message.text.strip()
-    if contact.lower() == "skip":
-        contact = ""
-    context.user_data["contact"] = contact
+    context.user_data["contact"] = "" if contact.lower() == "skip" else contact
     await submit_to_airtable(update, context)
     return ConversationHandler.END
 
 async def submit_to_airtable(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = context.user_data
     code = data.get("lang", "en")
-    timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    timestamp = datetime.now(timezone.utc).isoformat()
     username = update.effective_user.username or ""
 
-    airtable_data = {
+    record = {
         "fields": {
             "Timestamp": timestamp,
             "Username": username,
             "User ID": str(update.effective_user.id),
             "Language": code,
-            "Category": data.get("category", ""),
-            "Report": data.get("description", ""),
-            "Location": data.get("location", ""),
-            "Age": data.get("age", ""),
-            "Contact": data.get("contact", ""),
+            "Category": data.get("category"),
+            "Report": data.get("description"),
+            "Location": data.get("location"),
+            "Age": data.get("age"),
+            "Contact": data.get("contact"),
         }
     }
 
-    url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
     headers = {
         "Authorization": f"Bearer {AIRTABLE_API_KEY}",
         "Content-Type": "application/json"
     }
 
+    url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
+
     async with aiohttp.ClientSession() as session:
-        async with session.post(url, json=airtable_data, headers=headers) as resp:
-            if resp.status in (200, 201):
+        async with session.post(url, json=record, headers=headers) as response:
+            if response.status in (200, 201):
                 await update.message.reply_text(STRINGS[code]["thank_you"])
-                await update.message.reply_text(
-                    STRINGS[code]["report_summary"].format(
-                        location=data.get("location", ""),
-                        category=data.get("category", ""),
-                        description=data.get("description", "")
-                    )
-                )
+                await update.message.reply_text(STRINGS[code]["report_summary"].format(
+                    location=data["location"],
+                    category=data["category"],
+                    description=data["description"]
+                ))
                 await send_age_based_email(data)
             else:
-                error_text = await resp.text()
-                logger.error(f"Airtable API error: {resp.status} - {error_text}")
-                await update.message.reply_text("⚠️ Something went wrong while submitting the report.")
+                error = await response.text()
+                logger.error(f"Airtable error: {response.status} - {error}")
+                await update.message.reply_text("⚠️ Report submission failed.")
 
 async def send_age_based_email(data):
     age = data.get("age", 0)
     recipient = EMAIL_UNDER_18 if age < 18 else EMAIL_18_AND_OVER
+    subject = f"GBV Report ({'Under 18' if age < 18 else '18+'}) - {data['category']}"
 
-    subject = f"GBV Report ({'Under 18' if age < 18 else '18+'}) - {data.get('category')} @ {data.get('location')[:30]}"
     body = f"""
 A new report has been submitted.
 
 Age: {age}
-Category: {data.get("category")}
-Description: {data.get("description")}
-Location: {data.get("location")}
-Contact: {data.get("contact") or 'N/A'}
+Category: {data['category']}
+Description: {data['description']}
+Location: {data['location']}
+Contact: {data.get("contact", "N/A")}
 """
 
     message = MIMEMultipart()
@@ -258,10 +240,12 @@ Contact: {data.get("contact") or 'N/A'}
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
             server.login(SMTP_USER, SMTP_PASS)
-            server.sendmail(SMTP_USER, recipient, message.as_string())
-        logger.info(f"Email sent to {recipient} for age {age}")
+            server.send_message(message)
+        logger.info(f"Email sent to {recipient}")
     except Exception as e:
-        logger.error(f"Failed to send email: {e}")
+        logger.error(f"Email send failed: {e}")
+
+# === Main entrypoint ===
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
@@ -277,30 +261,26 @@ def main():
             CONTACT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_contact)],
         },
         fallbacks=[],
-        allow_reentry=True,
+        allow_reentry=True
     )
 
     app.add_handler(conv_handler)
 
-    
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/")
+    if WEBHOOK_URL:
+        async def run_webhook():
+            await app.initialize()
+            await app.bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
+            await app.start()
+            await app.updater.start_webhook(
+                listen="0.0.0.0",
+                port=int(os.environ.get("PORT", 10000)),
+                url_path=TOKEN,
+            )
+            await app.updater.idle()
 
-app = Application.builder().token(TOKEN).build()
-
-# Register your handlers here
-# app.add_handler(...)
-
-async def run():
-    await app.initialize()
-    await app.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
-    await app.start()
-    await app.updater.start_webhook(
-        listen="0.0.0.0",
-        port=int(os.getenv("PORT", 8443)),
-        url_path=TOKEN
-    )
-    await app.updater.idle()
+        asyncio.run(run_webhook())
+    else:
+        app.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(run())
+    main()
